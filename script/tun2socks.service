@@ -1,0 +1,184 @@
+#!/system/bin/sh
+
+xray_dir="/data/adb/xray"
+bin_dir="${xray_dir}/bin"
+etc_dir="${xray_dir}/etc"
+log_dir="${xray_dir}/log"
+
+bin_name="tun2socks"
+bin_path="${bin_dir}/${bin_name}"
+log_path="${log_dir}/tun2socks_warning.log"
+pid_path="${log_dir}/${bin_name}.pid"
+conf_path="${etc_dir}/config.json"
+
+tun_dev="xtun"
+tun_addr="10.0.0.1/24"
+netif_addr="10.0.0.2"
+netif_netmask="255.255.255.0"
+xray_addr="127.0.0.1"
+xray_port="65535"
+xray_gid="2222"
+iptable_id="1234"
+proxy_mark="0x1234"
+
+bin_opts="--tundev ${tun_dev} --netif-ipaddr ${netif_addr} --netif-netmask ${netif_netmask} --socks-server-addr ${xray_addr}:${xray_port} --enable-udprelay --loglevel 1"
+iptables_wait="iptables"
+iptables_intranet=(0.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4)
+
+suit_iptables_version() {
+  iptables_version=`iptables -V | grep -o "v1\.[0-9]"`
+  if [ "${iptables_version}" = "v1.4" ] ; then
+    ## fix options for lower version iptables
+    export ANDROID_DATA=/data
+    export ANDROID_ROOT=/system
+    iptables_wait="iptables -w"
+  elif [ "${iptables_version}" = "v1.6" ] || [ "${iptables_version}" = "v1.8" ] ; then
+    iptables_wait="iptables -w 100"
+  else
+    iptables_wait="echo iptables"
+  fi
+}
+
+find_ip_path() {
+  [ -f /system/bin/ip ] && alias ip="/system/bin/ip" && return 0
+  [ -f /system/xbin/ip ] && alias ip="/system/xbin/ip" && return 0
+  return 1
+}
+
+find_netstat_path() {
+  [ -f /system/bin/netstat ] && alias netstat="/system/bin/netstat" && return 0
+  [ -f /system/xbin/netstat ] && alias netstat="/system/xbin/netstat" && return 0
+  return 1
+}
+
+is_tun2socks_alive() {
+  [ -f ${pid_path} ] && cmd_path="/proc/`cat ${pid_path}`/cmdline" || return 1
+  [ -f ${cmd_path} ] && grep -q ${bin_path} ${cmd_path} && return 0 || return 1
+}
+
+show_tun2socks_status() {
+  if is_tun2socks_alive ; then
+    echo "[Info]: ${bin_name} service is running. ( PID: `cat ${pid_path}` )"
+    return 0
+  else
+    echo "[Info]: ${bin_name} service is stopped."
+    return 1
+  fi
+}
+
+is_xray_listen() {
+  find_netstat_path || return
+  xray_listen=`netstat -tnlp | grep xray | grep LISTEN`
+  if eval "echo \"${xray_listen}\" | grep -q :::${xray_port}" || eval "echo \"${xray_listen}\" | grep -q ${xray_addr}:${xray_port}" ; then
+    return
+  elif eval "echo \"${xray_listen}\" | grep -q :${xray_port}" ; then
+    return
+  else
+    echo "[Error]: xray service is not listening on port ${xray_port} ."
+    exit 1
+  fi
+}
+
+enable_proxy() {
+  find_ip_path || return
+  ${iptables_wait} -t mangle -F OUTPUT
+  ${iptables_wait} -t mangle -F PREROUTING
+  ${iptables_wait} -t mangle -F TUN2SOCKS &> /dev/null
+  ${iptables_wait} -t mangle -X TUN2SOCKS &> /dev/null
+  ${iptables_wait} -t nat -F PREROUTING
+  ${iptables_wait} -t nat -F POSTROUTING
+  ${iptables_wait} -t mangle -N TUN2SOCKS
+  for intranet in "${iptables_intranet[@]}"; do
+    ${iptables_wait} -t mangle -A TUN2SOCKS -d ${intranet} -j RETURN
+  done
+
+  ${iptables_wait} -t mangle -A TUN2SOCKS -p tcp -m owner --gid-owner ${xray_gid} -j RETURN
+  ${iptables_wait} -t mangle -A TUN2SOCKS -p udp -m owner --gid-owner ${xray_gid} -j RETURN
+  ${iptables_wait} -t mangle -A TUN2SOCKS -j MARK --set-mark ${proxy_mark}
+  ${iptables_wait} -t mangle -A OUTPUT -p tcp -j TUN2SOCKS
+  ${iptables_wait} -t mangle -A OUTPUT -p udp -j TUN2SOCKS
+
+  ip route replace default dev ${tun_dev} table ${iptable_id}
+  ip rule add fwmark ${proxy_mark} lookup ${iptable_id}
+}
+
+disable_proxy() {
+  find_ip_path || return
+  ${iptables_wait} -t mangle -F OUTPUT
+  ${iptables_wait} -t mangle -F PREROUTING
+  ${iptables_wait} -t mangle -F TUN2SOCKS &> /dev/null
+  ${iptables_wait} -t mangle -X TUN2SOCKS &> /dev/null
+  ${iptables_wait} -t nat -F PREROUTING
+  ${iptables_wait} -t nat -F POSTROUTING
+
+  ip rule del fwmark ${proxy_mark} lookup ${iptable_id}
+  ip route del default dev ${tun_dev} table ${iptable_id}
+}
+
+start_service() {
+  find_ip_path || return
+  if is_tun2socks_alive ; then
+    echo "[Info]: ${bin_name} service is running. ( PID: `cat ${pid_path}` )"
+    return 0
+  elif is_xray_listen ; then
+    echo "[Info]: Starting ${bin_name} service."
+    echo -n "" > ${log_path}
+    [ ! -e "/dev/net/tun" ] && mkdir -p /dev/net && ln -s /dev/tun /dev/net/tun
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    ip tuntap add mode tun ${tun_dev} >/dev/null 2>&1
+    ip addr add ${tun_addr} dev ${tun_dev} >/dev/null 2>&1
+    ip link set ${tun_dev} up >/dev/null 2>&1
+    nohup ${bin_path} ${bin_opts} >${log_path} &
+    echo -n $! > ${pid_path}
+    sleep 1
+    if is_tun2socks_alive ; then
+      echo "[Info]: ${bin_name} service is running. ( PID: `cat ${pid_path}` )"
+      return 0
+    else
+      echo "[Error]: Start ${bin_name} service Failed."
+      rm -f ${pid_path}
+      return 1
+    fi
+  else 
+    echo "[Error]: xray service is not listening on port ${xray_port} for socks proxy."
+    exit 1
+    return 2
+  fi
+}
+
+stop_service() {
+  find_ip_path || return
+  if show_tun2socks_status ; then
+    echo "[Info]: Stopping ${bin_name} service."
+    kill `cat ${pid_path}`
+    sleep 1
+    ip link set ${tun_dev} down >/dev/null 2>&1
+    ip tuntap del mode tun ${tun_dev} >/dev/null 2>&1
+    show_tun2socks_status
+  fi
+  rm -f ${pid_path}
+}
+
+suit_iptables_version
+case "$1" in
+  start)
+    start_service
+    enable_proxy
+    ;;
+  stop)
+    disable_proxy
+    stop_service
+    ;;
+  restart)
+    disable_proxy
+    stop_service
+    start_service
+    enable_proxy
+    ;;
+  status)
+    show_tun2socks_status
+    ;;
+  *)
+    echo "$0:  usage:  $0 {start|stop|restart|status}"
+    ;;
+esac

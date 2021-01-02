@@ -1,0 +1,188 @@
+// Config file of Xray. This file follows standard JSON format, with comments support.
+// Uncomment entries below to satisfy your needs. Also read our manual for more detail at
+// https://www.v2fly.org/
+{
+  "log": {
+    // By default, Xray writes access log to stdout.
+    // "access": "/path/to/access/log/file",
+    "access": "none",
+
+    // By default, Xray write error log to stdout.
+    // "error": "/path/to/error/log/file",
+    "error": "/data/adb/xray/log/xray_warning.log",
+
+    // Log level, one of "debug", "info", "warning", "error", "none"
+    "loglevel": "warning"
+  },
+  // List of inbound proxy configurations.
+  "inbounds": [{
+    // Port to listen on. You may need root access if the value is less than 1024.
+    "port": 65535,
+
+    // IP address to listen on. Change to "0.0.0.0" to listen on all network interfaces.
+    "listen": "127.0.0.1",
+
+    // Tag of the inbound proxy. May be used for routing.
+    "tag": "proxy-inbound",
+
+    // Protocol name of inbound proxy.
+    "protocol": "socks",
+
+    // Settings of the protocol. Varies based on protocol.
+    "settings": {
+      // Disable timeout setting for keeping persistent connection. Such as FCM.
+      //  "timeout": 10,
+      "auth": "noauth",
+      "udp": true,
+      "userLevel": 8
+    },
+
+    // If you wanna bypass BT streams, you should enable it.
+    "sniffing": {
+      "enabled": true,
+      "destOverride": ["http", "tls"]
+    }
+  },{
+    // Just listen for DNS.
+    "port": 53,
+
+    // Tag of the inbound for DNS proxy routing.
+    "tag": "dns-in",
+
+    // DNS proxy protocol must be dokodemo-door.
+    "protocol": "dokodemo-door",
+
+    // Setting of DNS proxy.
+    "settings": {
+      "port": 53,
+      "address": "223.5.5.5",
+      "network": "tcp,udp"
+    }
+  }],
+  // List of outbound proxy configurations.
+  "outbounds": [{
+    // Replace your proxy protocol in this section, like: VMESS, VLESS, Shadowsocks, trojan or socks.
+    "protocol": "freedom",
+
+    // Settings of the protocol. Varies based on protocol.
+
+    "settings": {},
+
+    // Tag of the outbound. May be used for routing.
+    "tag": "proxy"
+  },{
+    // Protocol name of the outbound proxy.
+    "protocol": "freedom",
+
+    // Settings of the protocol. Varies based on protocol.
+    "settings": {},
+
+    // Tag of the outbound. May be used for routing.
+    "tag": "direct"
+  },{
+    "protocol": "blackhole",
+    "settings": {},
+    "tag": "blocked"
+  }],
+
+  // Transport is for global transport settings. If you have multiple transports with same settings
+  // (say mKCP), you may put it here, instead of in each individual inbound/outbounds.
+  //"transport": {},
+  
+  // Routing controls how traffic from inbounds are sent to outbounds.
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules":[
+      {
+        // Bypass private IPs.
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "direct"
+      },
+      {
+        // Bypass all china IPs.
+        "type": "field",
+        "ip": ["geoip:cn"],
+        "outboundTag": "direct"
+      },
+      {
+        // Bypass all china sites.
+        "type": "field",
+        "domain": ["geosite:cn"],
+        "outboundTag": "direct"
+      },
+      {
+        // To bypass all BT streams, you should enable sniffing.
+        "type": "field",
+        "protocol":["bittorrent"], 
+        "outboundTag": "direct"
+      },
+      {
+        // Blocks major ads.
+        "type": "field",
+        "domain": ["geosite:category-ads"],
+        "outboundTag": "blocked"
+      }
+    ]
+  },
+
+  // Dns settings for domain resolution.
+  "dns": {
+    // Static hosts, similar to hosts file.
+    "hosts": {
+      // Match v2fly.org to another domain on CloudFlare. This domain will be used when querying IPs for v2fly.org.
+      "domain:v2fly.org": "www.vicemc.net",
+
+      // The following settings help to eliminate DNS poisoning in mainland China.
+      // It is safe to comment these out if this is not the case for you.
+      "domain:github.io": "pages.github.com",
+      "domain:wikipedia.org": "www.wikimedia.org",
+      "domain:shadowsocks.org": "electronicsrealm.com"
+    },
+    "servers": [
+      "1.1.1.1",
+      "1.0.0.1",
+      {
+        "address": "127.0.0.1",
+        "port": 53,
+        // List of domains that use this DNS first.
+        "domains": [
+          "geosite:cn"
+        ]
+      }
+    ]
+  },
+
+  // Policy controls some internal behavior of how xray handles connections.
+  // It may be on connection level by user levels in 'levels', or global settings in 'system.'
+  "policy": {
+    // Connection policys by user levels
+    "levels": {
+      "8": {
+        "uplinkOnly": 0,
+        "downlinkOnly": 0
+      }
+    },
+    "system": {
+      "statsInboundUplink": false,
+      "statsInboundDownlink": false
+    }
+  },
+
+  // Stats enables internal stats counter.
+  // This setting can be used together with Policy and Api. 
+  //"stats":{},
+
+  // Api enables gRPC APIs for external programs to communicate with xray instance.
+  //"api": {
+    //"tag": "api",
+    //"services": [
+    //  "HandlerService",
+    //  "LoggerService",
+    //  "StatsService"
+    //]
+  //},
+
+  // You may add other entries to the configuration, but they will not be recognized by xray.
+  "other": {}
+}

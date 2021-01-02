@@ -1,0 +1,35 @@
+#!/system/bin/sh
+
+xray_dir="/data/adb/xray"
+inotify=`realpath $0`
+scripts_dir=`dirname ${inotify}`
+xray_service="${scripts_dir}/xray.service"
+tun2socks_service="${scripts_dir}/tun2socks.service"
+
+events=$1
+monitor_dir=$2
+monitor_file=$3
+
+start_xray() {
+  ${xray_service} start && \
+  ${tun2socks_service} start
+}
+
+stop_xray() {
+  ${xray_service} stop && \
+  ${tun2socks_service} stop
+}
+
+main() {
+if [ ! -f ${xray_dir}/manual ] ; then
+  if [ "${monitor_file}" = "disable" ] ; then
+    if [ "${events}" = "d" ] ; then
+      start_xray
+    elif [ "${events}" = "n" ] ; then
+      stop_xray
+    fi
+  fi
+fi
+}
+
+main

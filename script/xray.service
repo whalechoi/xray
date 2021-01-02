@@ -1,0 +1,111 @@
+#!/system/bin/sh
+magisk_busybox="/data/adb/magisk/busybox"
+
+xray_dir="/data/adb/xray"
+bin_dir="${xray_dir}/bin"
+etc_dir="${xray_dir}/etc"
+log_dir="${xray_dir}/log"
+
+bin_name="xray"
+bin_path="${bin_dir}/${bin_name}"
+log_path="${log_dir}/xray_warning.log"
+pid_path="${log_dir}/${bin_name}.pid"
+conf_path="${etc_dir}/config.json"
+
+bin_opts="-c ${conf_path}"
+xray_gid="2222"
+
+find_netstat_path() {
+  [ -f /system/bin/netstat ] && alias netstat="/system/bin/netstat" && return 0
+  [ -f /system/xbin/netstat ] && alias netstat="/system/xbin/netstat" && return 0
+  return 1
+}
+
+is_xray_alive() {
+  [ -f ${pid_path} ] && cmd_path="/proc/`cat ${pid_path}`/cmdline" || return 1
+  [ -f ${cmd_path} ] && grep -q ${bin_path} ${cmd_path} && return 0 || return 1
+}
+
+show_xray_status() {
+  if is_xray_alive ; then
+    echo "[Info]: ${bin_name} service is running. ( PID: `cat ${pid_path}` )"
+    return 0
+  else
+    echo "[Info]: ${bin_name} service is stopped."
+    return 1
+  fi
+}
+
+wait_xray_listen() {
+  wait_count=0
+  xray_pid=`cat ${pid_path}`
+  find_netstat_path && \
+  check_xray_cmd="netstat -tnlp | grep xray | grep -q LISTEN" || \
+  check_xray_cmd="ls -lh /proc/${xray_pid}/fd | grep -q socket"
+  while is_xray_alive && ! eval "${check_xray_cmd}" && [ ${wait_count} -lt 100 ] ; do
+    sleep 1 ; wait_count=$((${wait_count} + 1))
+  done
+  if is_xray_alive && eval "${check_xray_cmd}" ; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+start_service() {
+  export XRAY_LOCATION_ASSET=${etc_dir}
+  echo -n "" > ${log_path}
+  if is_xray_alive ; then
+    echo "[Info]: ${bin_name} service is running. ( PID: `cat ${pid_path}` )"
+    return 0
+  elif [ -f ${conf_path} ] && ${magisk_busybox} setuidgid 0:${xray_gid} ${bin_path} ${bin_opts} -test ; then
+    echo "[Info]: Starting ${bin_name} service."
+    mkdir -p ${log_dir} >&2
+    nohup ${magisk_busybox} setuidgid 0:${xray_gid} ${bin_path} ${bin_opts} >/dev/null 2>&1 &
+    echo -n $! > ${pid_path}
+    if wait_xray_listen ; then
+      echo "[Info]: ${bin_name} service is running. ( PID: `cat ${pid_path}` )"
+      return 0
+    else
+      if is_xray_alive ; then
+        echo "[Warning]: ${bin_name} service is running but may not listening. ( PID: `cat ${pid_path}` )"
+        return 0
+      else
+        echo "[Error]: Start ${bin_name} service Failed."
+        rm -f ${pid_path}
+        return 1
+      fi
+    fi
+  else
+    return 2
+  fi
+}
+
+stop_service() {
+  if show_xray_status ; then
+    echo "[Info]: Stopping ${bin_name} service."
+    kill `cat ${pid_path}`
+    sleep 1
+    show_xray_status
+  fi
+  rm -f ${pid_path}
+}
+
+case "$1" in
+  start)
+    start_service
+    ;;
+  stop)
+    stop_service
+    ;;
+  restart)
+    stop_service
+    start_service
+    ;;
+  status)
+    show_xray_status
+    ;;
+  *)
+    echo "$0:  usage:  $0 {start|stop|restart|status}"
+    ;;
+esac
