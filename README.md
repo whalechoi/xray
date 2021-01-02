@@ -5,8 +5,8 @@ Without Magisk Mount, So you can use it on [Magisk Lite](<https://github.com/vvb
 
 ## Included
 * [Xray core](<https://github.com/XTLS/Xray-core>)
-* [BadVPN_tun2socks](<https://github.com/ambrop72/badvpn>)
-* [module_installer](https://github.com/topjohnwu/Magisk)
+* [go-tun2socks](<https://github.com/eycorsican/go-tun2socks>)
+* [magisk_module_installer](<https://github.com/topjohnwu/Magisk>)
 
 ## Install
 You can download the release installer zip file and install it via the Magisk Manager App.

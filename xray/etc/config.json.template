@@ -91,7 +91,7 @@
   
   // Routing controls how traffic from inbounds are sent to outbounds.
   "routing": {
-    "domainStrategy": "IPIfNonMatch",
+    "domainStrategy": "AsIs",
     "rules":[
       {
         // Bypass private IPs.
@@ -143,7 +143,7 @@
       "1.1.1.1",
       "1.0.0.1",
       {
-        "address": "127.0.0.1",
+        "address": "223.5.5.5",
         "port": 53,
         // List of domains that use this DNS first.
         "domains": [

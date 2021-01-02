@@ -12,7 +12,7 @@ pid_path="${log_dir}/${bin_name}.pid"
 conf_path="${etc_dir}/config.json"
 
 tun_dev="xtun"
-tun_addr="10.0.0.1/24"
+tun_addr="10.0.0.1"
 netif_addr="10.0.0.2"
 netif_netmask="255.255.255.0"
 xray_addr="127.0.0.1"
@@ -21,7 +21,7 @@ xray_gid="2222"
 iptable_id="1234"
 proxy_mark="0x1234"
 
-bin_opts="--tundev ${tun_dev} --netif-ipaddr ${netif_addr} --netif-netmask ${netif_netmask} --socks-server-addr ${xray_addr}:${xray_port} --enable-udprelay --loglevel 1"
+bin_opts="-loglevel warn -proxyServer ${xray_addr}:${xray_port} -proxyType socks -tunAddr ${netif_addr} -tunGw ${tun_addr} -tunMask ${netif_netmask} -tunName ${tun_dev} -tunPersist"
 iptables_wait="iptables"
 iptables_intranet=(0.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4)
 
@@ -126,7 +126,7 @@ start_service() {
     [ ! -e "/dev/net/tun" ] && mkdir -p /dev/net && ln -s /dev/tun /dev/net/tun
     echo 1 > /proc/sys/net/ipv4/ip_forward
     ip tuntap add mode tun ${tun_dev} >/dev/null 2>&1
-    ip addr add ${tun_addr} dev ${tun_dev} >/dev/null 2>&1
+    ip addr add ${tun_addr}/24 dev ${tun_dev} >/dev/null 2>&1
     ip link set ${tun_dev} up >/dev/null 2>&1
     nohup ${bin_path} ${bin_opts} >${log_path} &
     echo -n $! > ${pid_path}
