@@ -23,7 +23,7 @@ proxy_mark="0x1234"
 
 bin_opts="-loglevel warn -proxyServer ${xray_addr}:${xray_port} -proxyType socks -tunAddr ${netif_addr} -tunGw ${tun_addr} -tunMask ${netif_netmask} -tunName ${tun_dev} -tunPersist"
 iptables_wait="iptables"
-iptables_intranet=(0.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4)
+iptables_intranet=(0.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 224.0.0.0/4 240.0.0.0/4)
 
 suit_iptables_version() {
   iptables_version=`iptables -V | grep -o "v1\.[0-9]"`
